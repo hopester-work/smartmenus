@@ -6,7 +6,8 @@
     overflow: hidden;
   }
   to {
-    max-height: var(--#{$prefix}-height, 100vh);
+    // The script sets --sm-height (it is not a theme variable so it doesn't use the $prefix)
+    max-height: var(--sm-height, 100vh);
     overflow: hidden;
   }
 }

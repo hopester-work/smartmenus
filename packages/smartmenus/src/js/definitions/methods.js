@@ -13,6 +13,12 @@ const METHODS = [
     code: 'SmartMenus.destroy()'
   },
   {
+    label: 'getInstance',
+    type: 'static',
+    description: 'Returns the instance of a navbar element or `null` if it has none. Creating a new instance for an element that already has one destroys the previous instance (so the event handlers are never duplicated).',
+    code: 'const navbar1 = SmartMenus.getInstance(document.querySelector(\'#navbar1\'))'
+  },
+  {
     label: 'subHideAll',
     type: 'static',
     description: 'Hides (resets) all subs of all navbar instances.',

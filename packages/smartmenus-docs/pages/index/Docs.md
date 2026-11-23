@@ -372,6 +372,7 @@ The <a href="https://configurator.smartmenus.org/" target="_blank">SmartMenus Co
 
 **<a name="data-attributes-data-sm-any-script-option"></a>data-sm-[any-script-option]**  
 Any of the script [options](#options) can be set as a data attribute to the navbar element instead of being passed to the SmartMenus constructor in your JS code. These have highest priority and will extend and override any options passed to the SmartMenus constructor. Just make sure you are using kebab-case instead of camelCase.  
+Boolean data attributes accept `true`, `1` or an empty value (just `data-sm-collapsible-behavior-accordion`) for `true` and `false` or `0` for `false`. Invalid option names and values are reported in the browser console and ignored (the default value is used).  
 Applies to: `.sm-navbar`  
 Script option:
 

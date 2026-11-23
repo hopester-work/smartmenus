@@ -12,6 +12,7 @@ import '@quasar/extras/material-icons/material-icons.css'
 import 'quasar/src/css/index.sass'
 
 import App from './App.vue'
+import { writeStorage } from '@/safeStorage'
 
 const app = createApp(App)
 
@@ -29,8 +30,7 @@ watch(
   pinia.state,
   (state) => {
     for (const name of Object.keys(state)) {
-      const storeStringified = JSON.stringify(state[name])
-      localStorage.setItem(name, storeStringified)
+      writeStorage(name, state[name])
     }
   },
   { deep: true }

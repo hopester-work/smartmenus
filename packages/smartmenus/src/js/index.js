@@ -9,43 +9,33 @@ import Data from './utility/dom-data.js'
 import Events from './utility/dom-events.js'
 import Helpers from './utility/dom-helpers.js'
 import Query from './utility/dom-query.js'
+import Log from './utility/log.js'
 import MouseInputDetect from './utility/mouse-input-detect.js'
-import DEFAULTS from './defaults.js'
+import Options from './utility/options.js'
 
 const DATA_KEY = 'sm'
 const DATA_SUFFIX = `-${DATA_KEY}`
 const DATA_ATTRIBUTE_PREFIX = `data-${DATA_KEY}-`
 const EVENTS_NS = `.${DATA_KEY}`
 const API_EVENTS_SUFFIX = `-${DATA_KEY}`
+const TABBABLE_SELECTOR = 'a[href], button, input, select, textarea, summary, [tabindex]'
 
 const navbars = []
 
 class SmartMenus {
   constructor(element, options) {
-    this._navbar = element
-
-    // Get any options defined as data- attributes
-    const dataOptions = {}
-    for (const key of Object.keys(DEFAULTS)) {
-      let dataValue = this._navbar.dataset[`${DATA_KEY}${key.charAt(0).toUpperCase()}${key.slice(1)}`]
-      if (dataValue !== undefined) {
-        switch (typeof DEFAULTS[key]) {
-          case 'number': {
-            dataValue = Number.parseFloat(dataValue, 10)
-            break
-          }
-
-          case 'boolean': {
-            dataValue = dataValue === 'true'
-            break
-          }
-        }
-
-        dataOptions[key] = dataValue
-      }
+    if (!element || element.nodeType !== 1) {
+      throw new TypeError(`SmartMenus: the first argument must be the navbar DOM element but got ${element === null ? 'null' : typeof element}. Make sure the element exists when the script runs.`)
     }
 
-    this._opts = { ...DEFAULTS, ...options, ...dataOptions }
+    // An element can have only one instance so replace any previous one (otherwise the event handlers would be duplicated)
+    const previousInstance = Data.get(element, DATA_KEY)
+    if (previousInstance) {
+      previousInstance.destroy()
+    }
+
+    this._navbar = element
+    this._opts = Options.resolve(this._navbar, options, DATA_KEY)
     this._togglerState = null
     this._togglerAnchorShow = null
     this._togglerAnchorHide = null
@@ -63,6 +53,7 @@ class SmartMenus {
     this._idInc = 0
     this._disabled = false
     this._wasCollapsible = false
+    this._stylesheetWarned = false
 
     // We'll access these for some tests at runtime so we'll cache them
     this._firstLink = null
@@ -90,12 +81,29 @@ class SmartMenus {
 
   // Public
   destroy(refresh) {
+    // Already destroyed
+    if (!this._navbar) {
+      return
+    }
+
     this.subHideAll()
 
     if (this._nav) {
       this._destroySubs()
       this._destroyNav()
       this._nav = null
+    }
+
+    this._destroyTogglers()
+
+    if (!refresh) {
+      // Reset the state of the collapse/offcanvas so that nothing is left expanded
+      for (const element of [this._collapse, this._offcanvas, this._offcanvasOverlay, this._togglerState]) {
+        if (element) {
+          element.classList.remove(this._opts.classShow)
+          this._resetAnimation(element)
+        }
+      }
     }
 
     this._togglerState = null
@@ -184,13 +192,17 @@ class SmartMenus {
   }
 
   refresh() {
+    if (!this._navbar) {
+      return
+    }
+
     this.destroy(true)
     this._init(true)
   }
 
   subHideAll() {
-    this._clearTimeout(this._dropdownsShowTimeout)
-    this._clearTimeout(this._dropdownsHideTimeout)
+    this._dropdownsShowTimeout = this._clearTimeout(this._dropdownsShowTimeout)
+    this._dropdownsHideTimeout = this._clearTimeout(this._dropdownsHideTimeout)
 
     const visibleCount = this._visibleSubs.length
 
@@ -200,12 +212,16 @@ class SmartMenus {
       }
     }
 
-    this._visibleSubs = []
-    this._clickActivated = false
-    this._zIndexInc = 0
+    // Keep tracking any subs that are still visible because their hiding was prevented (in a beforehide event handler)
+    this._visibleSubs = this._visibleSubs.filter(sub => this._subIsVisible(sub))
 
-    if (visibleCount > 0) {
-      Events.trigger(this._navbar, `hideall${API_EVENTS_SUFFIX}`)
+    if (this._visibleSubs.length === 0) {
+      this._clickActivated = false
+      this._zIndexInc = 0
+
+      if (visibleCount > 0) {
+        Events.trigger(this._navbar, `hideall${API_EVENTS_SUFFIX}`)
+      }
     }
   }
 
@@ -272,8 +288,9 @@ class SmartMenus {
   _clearTimeout(timeout) {
     if (timeout) {
       window.clearTimeout(timeout)
-      timeout = 0
     }
+
+    return 0
   }
 
   _destroyLink(element) {
@@ -308,7 +325,11 @@ class SmartMenus {
     Data.delete(this._navbar, DATA_KEY)
     this._navbar.removeAttribute(`${DATA_ATTRIBUTE_PREFIX}id`)
     Events.off(this._navbar, EVENTS_NS)
-    navbars.splice(navbars.indexOf(this), 1)
+    // Look it up by id and not by identity since the instance might be wrapped in a proxy by some framework (e.g. Vue)
+    const index = navbars.findIndex(navbar => navbar._navbarId === this._navbarId)
+    if (index > -1) {
+      navbars.splice(index, 1)
+    }
   }
 
   _destroySub(element) {
@@ -325,6 +346,7 @@ class SmartMenus {
     Data.delete(element, `parent-link${DATA_SUFFIX}`)
     Data.delete(element, `level${DATA_SUFFIX}`)
     Data.delete(element, `beforefirstshow-fired${DATA_SUFFIX}`)
+    this._resetAnimation(element)
     element.removeAttribute('aria-hidden')
     element.removeAttribute('aria-labelledby')
   }
@@ -341,6 +363,23 @@ class SmartMenus {
     }
   }
 
+  _destroyTogglers() {
+    for (const anchor of [this._togglerAnchorShow, this._togglerAnchorHide]) {
+      if (anchor) {
+        anchor.removeAttribute('aria-controls')
+        anchor.removeAttribute('aria-expanded')
+      }
+    }
+
+    for (const element of [this._collapse, this._offcanvas]) {
+      if (element && (element.getAttribute('id') || '').startsWith(this._accessIdPrefix)) {
+        element.removeAttribute('id')
+      }
+    }
+
+    this._setOffcanvasARIA(false)
+  }
+
   _docClick(event) {
     // Hide on any click outside the nav
     const isCollapsible = this._isCollapsible()
@@ -355,7 +394,7 @@ class SmartMenus {
     }
 
     if ((this._lastTouch.x2 === undefined || this._lastTouch.x1 === this._lastTouch.x2) && (this._lastTouch.y2 === undefined || this._lastTouch.y1 === this._lastTouch.y2)) {
-      this._clearTimeout(this._dropdownsHideTimeout)
+      this._dropdownsHideTimeout = this._clearTimeout(this._dropdownsHideTimeout)
 
       // Call with a delay to prevent triggering accidental unwanted click on some page element
       const { target } = this._lastTouch
@@ -382,13 +421,35 @@ class SmartMenus {
     this._lastTouch = { x1: touchPoint.pageX, y1: touchPoint.pageY, target: touchPoint.target }
   }
 
+  _getOffcanvasTabbables() {
+    const elements = this._offcanvas ? Query.getAll(TABBABLE_SELECTOR, this._offcanvas) : []
+    if (this._togglerAnchorHide && !elements.includes(this._togglerAnchorHide)) {
+      elements.unshift(this._togglerAnchorHide)
+    }
+
+    return elements.filter(element => element.tabIndex >= 0 && !element.disabled && Helpers.isVisible(element))
+  }
+
   _getRootZIndex() {
     const zIndex = Number.parseInt(Helpers.getComputedStyle(this._navbar).zIndex, 10)
     return Number.isNaN(zIndex) ? 1 : zIndex
   }
 
   _handleEvents() {
-    return !this._disabled && this._isCSSOn()
+    if (this._disabled) {
+      return false
+    }
+
+    if (this._isCSSOn()) {
+      return true
+    }
+
+    if (this._firstLink && !this._stylesheetWarned) {
+      this._stylesheetWarned = true
+      Log.warn('the navbar is inactive because its links are displayed inline, which means the SmartMenus styles (or equivalent custom CSS) are not applied. Load the stylesheet, make the links non-inline (e.g. display: block) or set the detectStylesheet option to false.')
+    }
+
+    return false
   }
 
   _init(refresh) {
@@ -407,6 +468,8 @@ class SmartMenus {
     this._offcanvas = Query.get(this._opts.selectorOffcanvas, this._navbar)
     this._offcanvasOverlay = Query.get(this._opts.selectorOffcanvasOverlay, this._navbar)
     this._nav = Query.get(this._opts.selectorNav, this._navbar)
+
+    this._initTogglers()
 
     if (!refresh) {
       this._initNavbar()
@@ -435,7 +498,7 @@ class SmartMenus {
           if (target?.closest) {
             navbars.some(object => {
               const link = target.closest(object._opts.selectorLink)
-              if (link && object._navbar.contains(link)) {
+              if (link && object._navbar && object._navbar.contains(link)) {
                 object._linkEnter(event, link)
                 return true
               }
@@ -452,7 +515,8 @@ class SmartMenus {
     Data.set(this._nav, `level${DATA_SUFFIX}`, 1)
     Events.on(this._nav, Events.getEventsNS({
       'mouseover focusin': this._navOver.bind(this),
-      'mouseout focusout': this._navOut.bind(this),
+      mouseout: this._navOut.bind(this),
+      focusout: this._navFocusOut.bind(this),
       keydown: this._navKeyDown.bind(this)
     }, EVENTS_NS))
 
@@ -473,6 +537,41 @@ class SmartMenus {
     Events.on(this._navbar, `click${EVENTS_NS}`, this._opts.selectorTogglerAnchorShow, this._togglerAnchorShowClick.bind(this))
     Events.on(this._navbar, `click${EVENTS_NS}`, this._opts.selectorTogglerAnchorHide, this._togglerAnchorHideClick.bind(this))
     Events.on(this._navbar, `click${EVENTS_NS}`, this._opts.selectorOffcanvasOverlay, this._offcanvasOverlayClick.bind(this))
+    Events.on(this._navbar, `keydown${EVENTS_NS}`, this._navbarKeyDown.bind(this))
+  }
+
+  _initShownSubs(subs) {
+    const shownSubs = subs.filter(sub => this._subIsVisible(sub))
+    if (shownSubs.length === 0) {
+      return
+    }
+
+    // Subs that are already shown in the markup (e.g. rendered on the server) have to be tracked like the ones shown by the script.
+    // The dropdowns are always shown (and positioned) by the script so there it makes no sense to have them shown initially.
+    if (!this._isCollapsible()) {
+      for (const sub of shownSubs) {
+        sub.classList.remove(this._opts.classShow)
+      }
+
+      return
+    }
+
+    shownSubs.sort((a, b) => Data.get(a, `level${DATA_SUFFIX}`) - Data.get(b, `level${DATA_SUFFIX}`))
+    for (const sub of shownSubs) {
+      const parentLink = Data.get(sub, `parent-link${DATA_SUFFIX}`)
+      parentLink.classList.add(this._opts.classLinkExpanded)
+      const parentLinkToggler = Data.get(parentLink, `toggler${DATA_SUFFIX}`)
+      if (parentLinkToggler) {
+        parentLinkToggler.classList.add(this._opts.classLinkExpanded)
+        parentLinkToggler.setAttribute('aria-expanded', 'true')
+      } else {
+        parentLink.setAttribute('aria-expanded', 'true')
+      }
+
+      sub.setAttribute('aria-hidden', 'false')
+      Data.set(sub, `shown-before${DATA_SUFFIX}`, true)
+      this._visibleSubs.push(sub)
+    }
   }
 
   _initSub(element) {
@@ -517,6 +616,26 @@ class SmartMenus {
     // Cache these for faster access at runtime
     this._firstLink = Query.get(this._opts.selectorLink, this._nav)
     this._firstSub = subs[0]
+
+    this._initShownSubs(subs)
+  }
+
+  _initTogglers() {
+    const controlledElement = this._collapse || this._offcanvas
+    if (!controlledElement) {
+      return
+    }
+
+    const id = controlledElement.getAttribute('id') || this._accessIdPrefix + (++this._idInc)
+    controlledElement.setAttribute('id', id)
+
+    const isExpanded = String(controlledElement.classList.contains(this._opts.classShow))
+    for (const anchor of [this._togglerAnchorShow, this._togglerAnchorHide]) {
+      if (anchor) {
+        anchor.setAttribute('aria-controls', id)
+        anchor.setAttribute('aria-expanded', isExpanded)
+      }
+    }
   }
 
   _isCollapsible() {
@@ -524,7 +643,16 @@ class SmartMenus {
   }
 
   _isCSSOn() {
+    if (!this._opts.detectStylesheet) {
+      return true
+    }
+
     return this._firstLink && Helpers.getComputedStyle(this._firstLink).display !== 'inline'
+  }
+
+  _isOffcanvasOpen() {
+    // It is shown and acts as an offcanvas (it is not displayed as a regular static element on larger viewports)
+    return Boolean(this._offcanvas) && this._offcanvas.classList.contains(this._opts.classShow) && Helpers.getComputedStyle(this._offcanvas).position === 'fixed'
   }
 
   _isTouchMode() {
@@ -658,7 +786,7 @@ class SmartMenus {
     }
 
     if (!this._isTouchMode() && (this._opts.dropdownsShowTrigger === 'mouseover' || (this._opts.dropdownsShowTrigger === 'click-then-mouseover' && this._clickActivated) || this._opts.dropdownsHideTrigger !== 'click')) {
-      this._clearTimeout(this._dropdownsShowTimeout)
+      this._dropdownsShowTimeout = this._clearTimeout(this._dropdownsShowTimeout)
 
       const level = Data.get(element.closest(`${this._opts.selectorNav}, ${this._opts.selectorSub}`), `level${DATA_SUFFIX}`)
       const sub = Data.get(element, `sub${DATA_SUFFIX}`)
@@ -715,12 +843,65 @@ class SmartMenus {
         linkToggler.blur()
       }
 
-      this._clearTimeout(this._dropdownsShowTimeout)
+      this._dropdownsShowTimeout = this._clearTimeout(this._dropdownsShowTimeout)
     }
 
     Data.delete(element, `mousedown${DATA_SUFFIX}`)
 
     Events.trigger(this._navbar, `mouseleave${API_EVENTS_SUFFIX}`, element)
+  }
+
+  _navbarKeyDown(event) {
+    if (!this._handleEvents()) {
+      return
+    }
+
+    const { target } = event
+    switch (event.keyCode) {
+      // Tab
+      case 9: {
+        // Keep the focus inside the open offcanvas
+        if (this._isOffcanvasOpen()) {
+          this._offcanvasTrapFocus(event)
+        }
+
+        return
+      }
+
+      // Esc
+      case 27: {
+        // Close the open offcanvas (if the event hasn't already been used to hide a sub)
+        if (!event.defaultPrevented && this._togglerAnchorHide && this._isOffcanvasOpen()) {
+          this._togglerAnchorHide.click()
+          event.preventDefault()
+        }
+
+        return
+      }
+
+      // Space
+      case 32: {
+        // Toggler anchors are links with role="button" so they need to handle Space like real buttons do
+        if (target?.tagName === 'A' && target.matches(`${this._opts.selectorTogglerAnchorShow}, ${this._opts.selectorTogglerAnchorHide}`)) {
+          target.click()
+          event.preventDefault()
+        }
+      }
+    }
+  }
+
+  _navFocusOut(event) {
+    // The collapsible subs stay as they are when the focus moves away
+    if (!this._handleEvents() || this._isCollapsible()) {
+      return
+    }
+
+    // Hide the subs when the focus moves to an element outside the nav. When there is no related target the page lost focus
+    // so do not hide them. This is also needed in touch mode since keyboard-only users never trigger the mouse detection.
+    const { relatedTarget } = event
+    if (relatedTarget && !this._nav.contains(relatedTarget)) {
+      this.subHideAll()
+    }
   }
 
   _navKeyDown(event) {
@@ -776,10 +957,9 @@ class SmartMenus {
       return
     }
 
-    this._clearTimeout(this._dropdownsHideTimeout)
+    this._dropdownsHideTimeout = this._clearTimeout(this._dropdownsHideTimeout)
 
-    // On focusout if there is no related target (i.e. another page element that was focused) it means the page lost focus so do not hide the sub menus
-    if (this._opts.dropdownsHideTrigger !== 'click' || (event.type !== 'mouseout' && event.relatedTarget && (!event.target || !this._nav.contains(event.target)))) {
+    if (this._opts.dropdownsHideTrigger !== 'click') {
       this._dropdownsHideTimeout = window.setTimeout(() => {
         this.subHideAll()
       }, this._opts.dropdownsHideTimeout)
@@ -791,7 +971,7 @@ class SmartMenus {
       return
     }
 
-    this._clearTimeout(this._dropdownsHideTimeout)
+    this._dropdownsHideTimeout = this._clearTimeout(this._dropdownsHideTimeout)
   }
 
   _offcanvasOverlayClick(event) {
@@ -804,6 +984,27 @@ class SmartMenus {
     }
 
     event.preventDefault()
+  }
+
+  _offcanvasTrapFocus(event) {
+    const tabbables = this._getOffcanvasTabbables()
+    if (tabbables.length === 0) {
+      event.preventDefault()
+      return
+    }
+
+    const first = tabbables[0]
+    const last = tabbables[tabbables.length - 1]
+    const isInside = tabbables.includes(event.target)
+    if (event.shiftKey) {
+      if (event.target === first || !isInside) {
+        last.focus()
+        event.preventDefault()
+      }
+    } else if (event.target === last || !isInside) {
+      first.focus()
+      event.preventDefault()
+    }
   }
 
   _markCurrentLinkAsSelected() {
@@ -836,6 +1037,66 @@ class SmartMenus {
             }
           }
         }
+      }
+    }
+  }
+
+  _resetAnimation(element) {
+    const endTimeout = Data.get(element, `animationend-timeout${DATA_SUFFIX}`)
+    if (endTimeout) {
+      window.clearTimeout(endTimeout)
+    }
+
+    Data.delete(element, `animationend-timeout${DATA_SUFFIX}`)
+    Data.delete(element, `animationend-trigger${DATA_SUFFIX}`)
+    Events.off(element, `animationend${EVENTS_NS}`)
+    element.classList.remove(this._opts.classShowing, this._opts.classHiding)
+    element.style.removeProperty(`--${DATA_KEY}-height`)
+    if (element.getAttribute('style') === '') {
+      element.removeAttribute('style')
+    }
+  }
+
+  _setOffcanvasARIA(isOpen) {
+    if (!this._offcanvas) {
+      return
+    }
+
+    // Remember which attributes were added by the script so that only they are removed afterwards
+    const dataKey = `aria${DATA_SUFFIX}`
+    if (isOpen) {
+      if (Data.get(this._offcanvas, dataKey)) {
+        return
+      }
+
+      const attributes = { role: 'dialog', 'aria-modal': 'true' }
+      const label = this._navbar.getAttribute('aria-label')
+      if (label && !this._offcanvas.hasAttribute('aria-label') && !this._offcanvas.hasAttribute('aria-labelledby')) {
+        attributes['aria-label'] = label
+      }
+
+      const added = []
+      for (const [name, value] of Object.entries(attributes)) {
+        if (!this._offcanvas.hasAttribute(name)) {
+          this._offcanvas.setAttribute(name, value)
+          added.push(name)
+        }
+      }
+
+      Data.set(this._offcanvas, dataKey, added)
+    } else {
+      for (const name of Data.get(this._offcanvas, dataKey) || []) {
+        this._offcanvas.removeAttribute(name)
+      }
+
+      Data.delete(this._offcanvas, dataKey)
+    }
+  }
+
+  _setTogglersARIA(isExpanded) {
+    for (const anchor of [this._togglerAnchorShow, this._togglerAnchorHide]) {
+      if (anchor) {
+        anchor.setAttribute('aria-expanded', String(isExpanded))
       }
     }
   }
@@ -875,7 +1136,11 @@ class SmartMenus {
     }
 
     element.setAttribute('aria-hidden', 'true')
-    this._visibleSubs.splice(this._visibleSubs.indexOf(element), 1)
+    const index = this._visibleSubs.indexOf(element)
+    if (index > -1) {
+      this._visibleSubs.splice(index, 1)
+    }
+
     Events.trigger(this._navbar, `hide${API_EVENTS_SUFFIX}`, element)
   }
 
@@ -1094,10 +1359,16 @@ class SmartMenus {
     if (this._togglerState) {
       this._togglerState.classList.remove(this._opts.classShow)
       // Just in case try to remove the hash too
-      window.location.hash = window.location.hash.replace(new RegExp(`^#${this._togglerState.getAttribute('id')}$`), '')
+      const togglerStateId = this._togglerState.getAttribute('id')
+      if (togglerStateId && window.location.hash === `#${togglerStateId}`) {
+        window.location.hash = ''
+      }
     }
 
-    if (this._togglerAnchorHide) {
+    this._setTogglersARIA(false)
+    this._setOffcanvasARIA(false)
+
+    if (this._togglerAnchorShow) {
       this._togglerAnchorShow.focus()
     }
 
@@ -1137,6 +1408,9 @@ class SmartMenus {
       this._togglerState.classList.add(this._opts.classShow)
     }
 
+    this._setTogglersARIA(true)
+    this._setOffcanvasARIA(true)
+
     if (this._togglerAnchorHide) {
       this._togglerAnchorHide.focus()
     }
@@ -1164,11 +1438,17 @@ class SmartMenus {
 
   // Static
   static destroy() {
-    while (navbars.length > 0) {
-      navbars[0].destroy()
+    for (const navbar of [...navbars]) {
+      navbar.destroy()
     }
 
+    // Make sure nothing stale is left in the registry
+    navbars.splice(0)
     MouseInputDetect.disable()
+  }
+
+  static getInstance(element) {
+    return Data.get(element, DATA_KEY)
   }
 
   static subHideAll() {

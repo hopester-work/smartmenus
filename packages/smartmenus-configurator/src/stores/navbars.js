@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { useParams } from '@/useParams'
+import { readStorage } from '@/safeStorage'
+import { parseJSON, sanitizeNavbars } from '@/validate'
 
 const { params } = useParams()
 
@@ -19,25 +21,13 @@ const getDefaultNavbars = () => ({
   nextId: 2
 })
 
+// Both the URL parameters and the saved state are untrusted input so they are validated
 const getNavbars = () => {
-  if (params['navbars']) {
-    try {
-      const navbarsPartial = JSON.parse(params['navbars'])
-      const navbars = getDefaultNavbars()
-      for (const [index, navbarPartial] of navbarsPartial.navbars.entries()) {
-        if (!navbars.navbars[index]) {
-          navbars.navbars.push({ ...getNavbarTemplate(), id: index + 1 })
-          navbars.nextId = index + 2
-        }
-        navbars.navbars[index] = Object.assign(navbars.navbars[index], navbarPartial)
-      }
-      return navbars
-    } catch (e) {
-      console.log(e)
-    }
+  const fromParams = sanitizeNavbars(parseJSON(params['navbars']), getNavbarTemplate)
+  if (fromParams && fromParams.navbars.length > 0) {
+    return fromParams
   }
-  const navbars = localStorage.getItem('navbars')
-  return navbars ? JSON.parse(navbars) : getDefaultNavbars()
+  return sanitizeNavbars(readStorage('navbars'), getNavbarTemplate) || getDefaultNavbars()
 }
 
 export const useNavbarsStore = defineStore('navbars', {

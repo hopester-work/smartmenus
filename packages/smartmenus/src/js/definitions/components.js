@@ -188,6 +188,7 @@ const COMPONENTS = [
           'sm-navbar--offcanvas-only',
           'sm-navbar--sidebar-left',
           'sm-navbar--sidebar-right',
+          'sm-navbar--sidebar-centered',
           'sm-navbar--sidebar-only',
           'sm-navbar--collapsible-only'
         ]

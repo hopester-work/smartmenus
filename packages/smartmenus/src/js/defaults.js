@@ -24,6 +24,7 @@ const DEFAULTS = {
   markCurrentLinkParentsAsSelected: false,
   resetTogglerOnLinkSelect: false,
   showSubOnSplitLinkSelect: false,
+  detectStylesheet: true,
   classNavbarVertical: 'sm-navbar--vertical',
   classNavbarDropReverseY: 'sm-navbar--drop-reverse-y',
   classNavbarDropReverseX: 'sm-navbar--drop-reverse-x',
@@ -48,4 +49,12 @@ const DEFAULTS = {
   selectorLinkSplit: '.sm-nav-link--split, .sm-sub-link--split'
 }
 
+// The options that accept only a fixed set of values
+const OPTION_VALUES = {
+  collapsibleResetSubsOnClickOn: ['none', 'toggler', 'page'],
+  dropdownsShowTrigger: ['click', 'mouseover', 'click-then-mouseover'],
+  dropdownsHideTrigger: ['click', 'mouseout']
+}
+
 export default DEFAULTS
+export { OPTION_VALUES }

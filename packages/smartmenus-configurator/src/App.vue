@@ -81,7 +81,9 @@ const navbarContentHTML = computed(() => {
       `
           : ''
       }
-      <div class="sm-${isOffcanvas.value[navbar.id] ? 'offcanvas' : 'collapse'}">`
+      <div class="sm-${isOffcanvas.value[navbar.id] ? 'offcanvas' : 'collapse'}"${
+        isOffcanvas.value[navbar.id] ? ' aria-label="Main menu"' : ''
+      }>`
           : ''
       }
 

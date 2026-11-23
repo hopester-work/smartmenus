@@ -15,6 +15,7 @@ module.exports = {
     'vue/multi-word-component-names': 'off'
   },
   globals: {
-    '__APP_VERSION__': true
+    '__APP_VERSION__': true,
+    '__SRI__': true
   }
 }

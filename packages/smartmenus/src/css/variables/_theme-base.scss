@@ -30,6 +30,16 @@ $border:                  rgba($text, 0.1) !default;
 $text-shadow:             none !default;
 $box-shadow:              rgba(0, 0, 0, 0.1) !default;
 
+// Keyboard focus ring (displayed on :focus-visible). The default color is the text color of the focused element so it always contrasts with its background.
+$focus-ring-color:        currentcolor !default;
+$focus-ring-width:        2px !default;
+$focus-ring-offset:       -2px !default; // negative so the ring is not clipped by scrollable containers
+
+// By default the "soft", "alt", "disabled", "separator" and "border" colors above are calculated when the CSS is compiled so they don't follow
+// runtime changes of --sm-bg/--sm-text (e.g. a dark mode switched via a class or attribute). Set this to true to calculate them in the browser instead
+// (via color-mix(), in the browsers that support it, the compiled colors remain as a fallback). Only enable it if you haven't customized those variables.
+$derive-colors-at-runtime: false !default;
+
 // Typography
 $font-family:             inherit !default;
 $font-size:               1rem !default;
@@ -61,6 +71,9 @@ $border-radius-small:     6px !default;
   --#{$prefix}-border: #{$border};
   --#{$prefix}-text-shadow: #{$text-shadow};
   --#{$prefix}-box-shadow: #{$box-shadow};
+  --#{$prefix}-focus-ring-color: #{$focus-ring-color};
+  --#{$prefix}-focus-ring-width: #{$focus-ring-width};
+  --#{$prefix}-focus-ring-offset: #{$focus-ring-offset};
   --#{$prefix}-font-family: #{$font-family};
   --#{$prefix}-font-size: #{$font-size};
   --#{$prefix}-font-size-small: #{$font-size-small};
@@ -68,4 +81,18 @@ $border-radius-small:     6px !default;
   --#{$prefix}-border-radius: #{$border-radius};
   --#{$prefix}-border-radius-large: #{$border-radius-large};
   --#{$prefix}-border-radius-small: #{$border-radius-small};
+}
+
+@if $derive-colors-at-runtime {
+  @supports (color: color-mix(in srgb, red, blue)) {
+    #{$var-scope} {
+      --#{$prefix}-bg-soft: color-mix(in srgb, color-mix(in srgb, black 15%, var(--#{$prefix}-bg)) 30%, transparent);
+      --#{$prefix}-text-disabled: color-mix(in srgb, var(--#{$prefix}-text) 38%, transparent);
+      --#{$prefix}-bg-alt: color-mix(in srgb, black 3%, var(--#{$prefix}-bg));
+      --#{$prefix}-bg-alt-soft: color-mix(in srgb, color-mix(in srgb, black 15%, var(--#{$prefix}-bg-alt)) 30%, transparent);
+      --#{$prefix}-text-alt-disabled: color-mix(in srgb, var(--#{$prefix}-text-alt) 38%, transparent);
+      --#{$prefix}-separator: color-mix(in srgb, var(--#{$prefix}-text) 20%, transparent);
+      --#{$prefix}-border: color-mix(in srgb, var(--#{$prefix}-text) 10%, transparent);
+    }
+  }
 }

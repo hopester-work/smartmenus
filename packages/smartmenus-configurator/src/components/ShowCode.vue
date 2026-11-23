@@ -150,11 +150,18 @@ const codeBrowserCSS = computed(() => {
   `
 })
 
+// The CDN links use the exact version (a range could silently pull in a release with breaking changes)
+// and Subresource Integrity hashes so a modified file is never executed/applied
+const CDN_URL = `https://unpkg.com/smartmenus@${__APP_VERSION__}/dist`
+
+const getIntegrityAttributes = (path) => {
+  return __SRI__[path] ? ` integrity="${__SRI__[path]}" crossorigin="anonymous"` : ''
+}
+
 const codeBrowserCSSImport = computed(() => {
+  const path = `css/${codeStylesheetName.value}.min.css`
   return `
-    ${'<'}link href="https://www.unpkg.com/smartmenus@^${__APP_VERSION__}/dist/css/${
-    codeStylesheetName.value
-  }.min.css" rel="stylesheet" />
+    ${'<'}link href="${CDN_URL}/${path}"${getIntegrityAttributes(path)} rel="stylesheet" />
     ${'<'}link href="smartmenus-custom.css" rel="stylesheet" />
   `
 })
@@ -188,8 +195,9 @@ const codeNodeJSInit = computed(() => {
 })
 
 const codeBrowserJSInclude = computed(() => {
+  const path = 'js/smartmenus.browser.min.js'
   return `
-    ${'<'}script src="https://www.unpkg.com/smartmenus@^${__APP_VERSION__}/dist/js/smartmenus.browser.min.js">${'</'}script>
+    ${'<'}script src="${CDN_URL}/${path}"${getIntegrityAttributes(path)}>${'</'}script>
     ${'<'}script src="smartmenus-init.js">${'</'}script>
   `
 })

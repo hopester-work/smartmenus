@@ -5,7 +5,7 @@
  * Licensed MIT https://github.com/vadikom/smartmenus/blob/master/LICENSE-MIT
  */
 
-import DEFAULTS from '../defaults.js'
+import DEFAULTS, { OPTION_VALUES } from '../defaults.js'
 
 const OPTIONS = [
   {
@@ -18,12 +18,12 @@ const OPTIONS = [
   },
   {
     label: 'collapsibleResetSubsOnClickOn',
-    lookup: ['none', 'toggler', 'page'],
+    lookup: OPTION_VALUES.collapsibleResetSubsOnClickOn,
     description: 'Reset the subs on click on...'
   },
   {
     label: 'dropdownsShowTrigger',
-    lookup: ['click', 'mouseover', 'click-then-mouseover'],
+    lookup: OPTION_VALUES.dropdownsShowTrigger,
     description: 'Dropdowns show trigger event.'
   },
   {
@@ -32,7 +32,7 @@ const OPTIONS = [
   },
   {
     label: 'dropdownsHideTrigger',
-    lookup: ['click', 'mouseout'],
+    lookup: OPTION_VALUES.dropdownsHideTrigger,
     description: 'Dropdowns hide trigger event.'
   },
   {
@@ -84,6 +84,10 @@ const OPTIONS = [
     description: 'Applies to split links only (that have both a link element and sub toggler element). Useful for single page applications (SPA) that use pushState/hash changes for navigation instead of full page reloads.'
   },
   {
+    label: 'detectStylesheet',
+    description: 'The script stays inactive until it detects that the navbar styles are applied (it checks that the first link is not displayed inline) so a navbar without styles remains a plain list. Set it to `false` if you use your own CSS that displays the links inline.'
+  },
+  {
     label: 'classNavbarVertical',
     description: 'A class that signifies the navbar as vertical.'
   },
@@ -105,7 +109,7 @@ const OPTIONS = [
   },
   {
     label: 'classLinkSelected',
-    description: 'A class that signifies a link as selected so it can be styled differently from the rest. It can be set either manually or the script can be configured to automatically set it to the link to the current loaded page URL via the `selectCurrentLink: true` option and also to the links of its ancestor items via the `selectCurrentLinkAncestors: true` option. Applies to `selectorLink` elements.'
+    description: 'A class that signifies a link as selected so it can be styled differently from the rest. It can be set either manually or the script can be configured to automatically set it to the link to the current loaded page URL via the `markCurrentLinkAsSelectedOnInit: true` option and also to the links of its ancestor items via the `markCurrentLinkParentsAsSelected: true` option. Applies to `selectorLink` elements.'
   },
   {
     label: 'classLinkDisabled',

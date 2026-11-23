@@ -35,6 +35,10 @@ const Helpers = {
     return (ownerDocument && ownerDocument.defaultView) || window
   },
 
+  isVisible(element) {
+    return element.getClientRects().length > 0 && Helpers.getComputedStyle(element).visibility !== 'hidden'
+  },
+
   _getDimensions(element, height) {
     const elementStyle = element.style
     let oldStyle = null
